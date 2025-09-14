@@ -1,0 +1,9 @@
+# runtime & large artifacts
+vendor/
+models/
+data/
+__pycache__/
+*.pyc
+*.log
+.env
+

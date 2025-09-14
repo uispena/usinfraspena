@@ -1,0 +1,105 @@
+# 1) Backup & replace train.sh with a clean, working version
+cp -a train.sh train.sh.bak.$(date +%s) 2>/dev/null || true
+cat > train.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+shopt -s extglob
+
+ROOT="$(pwd)"
+DST="$ROOT/data/corpora/web"
+VENDOR="$ROOT/vendor"
+mkdir -p "$DST" "$VENDOR"
+
+log(){ printf "\n\033[1;34m[fetch]\033[0m %s\n" "$*"; }
+
+git_sparse() {
+  local repo="$1"; shift
+  local name="$1"; shift
+  local paths=("$@")
+  local dir="$VENDOR/$name"
+  if [[ ! -d "$dir/.git" ]]; then
+    log "Cloning $name (sparse)"
+    git clone --depth=1 --filter=blob:none "$repo" "$dir" >/dev/null
+    ( cd "$dir" && git sparse-checkout init --cone >/dev/null )
+  fi
+  ( cd "$dir" && git sparse-checkout set "${paths[@]}" >/dev/null && git pull --ff-only >/dev/null )
+}
+
+copy_tree() {
+  local src="$1"; local dst="$2"
+  mkdir -p "$dst"
+  rsync -a --delete --prune-empty-dirs \
+    --include='*/' --include='*.md' --include='*.html' --include='*.htm' \
+    --exclude='*' "$src"/ "$dst"/ 2>/dev/null || true
+}
+
+# --- Kubernetes website (CC BY 4.0)
+log "Kubernetes website (concepts/tasks/reference/kubectl/kubeadm)"
+git_sparse "https://github.com/kubernetes/website.git" "k8s-website" \
+  content/en/docs/concepts \
+  content/en/docs/tasks \
+  content/en/docs/reference/kubectl \
+  content/en/docs/setup/production-environment/tools/kubeadm \
+  content/en/docs/setup/best-practices \
+  content/en/docs/reference/labels-annotations-taints
+copy_tree "$VENDOR/k8s-website/content/en/docs" "$DST/kubernetes"
+
+# --- Helm website/docs (MIT)
+log "Helm docs"
+git_sparse "https://github.com/helm/helm-www.git" "helm-www" content/en/docs
+copy_tree "$VENDOR/helm-www/content/en/docs" "$DST/helm"
+
+# --- containerd docs (docs CC BY 4.0)
+log "containerd docs"
+git_sparse "https://github.com/containerd/containerd.git" "containerd" docs
+copy_tree "$VENDOR/containerd/docs" "$DST/containerd"
+
+# --- CNI spec (Apache-2.0)  *** NO SPARSE HERE ***
+log "CNI spec"
+if [[ ! -d "$VENDOR/cni/.git" ]]; then
+  git clone --depth=1 https://github.com/containernetworking/cni.git "$VENDOR/cni" >/dev/null
+else
+  ( cd "$VENDOR/cni" && git pull --ff-only >/dev/null )
+fi
+mkdir -p "$DST/cni"
+cp -f "$VENDOR/cni/SPEC.md" "$DST/cni/" 2>/dev/null || \
+  curl -fsSL https://raw.githubusercontent.com/containernetworking/cni/master/SPEC.md -o "$DST/cni/SPEC.md"
+copy_tree "$VENDOR/cni/Documentation" "$DST/cni/Documentation"
+
+# --- etcd website/docs (Apache-2.0)
+log "etcd website docs"
+git_sparse "https://github.com/etcd-io/website.git" "etcd-website" content/en/docs
+copy_tree "$VENDOR/etcd-website/content/en/docs" "$DST/etcd"
+
+# --- Attributions
+log "Writing ATTRIBUTIONS.md"
+cat > "$DST/ATTRIBUTIONS.md" <<'MD'
+# Attributions & Licenses
+- Kubernetes website docs — © The Kubernetes Authors — CC BY 4.0 — kubernetes.io/docs
+- Helm website/docs — © The Helm Authors — MIT — github.com/helm/helm-www
+- containerd docs — © containerd Authors — CC BY 4.0 — github.com/containerd/containerd/tree/main/docs
+- CNI spec — © CNI Authors — Apache-2.0 — github.com/containernetworking/cni (SPEC.md + Documentation/)
+- etcd website/docs — © etcd Authors — Apache-2.0 — github.com/etcd-io/website
+MD
+
+# --- ensure RAG picks them up
+sed -i 's|^  file_glob: .*|  file_glob: ["data/corpora/**/*.md","data/corpora/**/*.html","data/corpora/**/*.htm","data/corpora/**/*.txt","data/corpora/**/*.log"]|' "$ROOT/config.yaml"
+
+# --- restart agent and show health
+log "Restarting agent to (re)index"
+( cd "$ROOT" && docker compose up -d --build >/dev/null )
+sleep 3
+docker logs -n 120 kubeaid-agent || true
+
+log "Health check"
+curl -fsS http://localhost:8000/health && echo
+
+log "Smoke test"
+curl -sS -X POST http://localhost:8000/ask -H 'Content-Type: application/json' \
+  -d '{"query":"Give kubectl to list all taints and show recent cluster events."}' | sed 's/\\n/\n/g' | head -n 60
+EOF
+chmod +x train.sh
+
+# 2) Run it
+./train.sh
+

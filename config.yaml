@@ -1,0 +1,22 @@
+llm:
+  gguf_path: "./models/llm/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+  n_ctx: 8192
+  n_gpu_layers: 999  # push as much to GPU as possible
+  top_p: 0.9
+  temp: 0.3
+
+embed:
+  name: "thenlper/gte-small"
+  batch_size: 64
+
+rag:
+  vdb_path: "./data/vectordb"
+  chunk_size: 900
+  chunk_overlap: 150
+  file_glob: ["data/corpora/**/*.md","data/corpora/**/*.html","data/corpora/**/*.htm","data/corpora/**/*.txt","data/corpora/**/*.log"]
+
+tools:
+  kubectl_path: "/usr/bin/kubectl"
+  journalctl_path: "/usr/bin/journalctl"
+  safe_namespaces: ["default","kube-system","uipath","monitoring"]
+
