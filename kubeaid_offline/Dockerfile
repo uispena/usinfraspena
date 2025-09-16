@@ -22,8 +22,9 @@ RUN python3 ingest.py
 FROM python:3.10-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+RUN printf '#!/usr/bin/env bash\nexec python3 /app/kubeaid-agent.pyz "$@"\n' > /usr/local/bin/kubeaid-agent && chmod 0755 /usr/local/bin/kubeaid-agent
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 RUN printf '#!/usr/bin/env bash
-exec python3 /app/kubeaid-agent.pyz "$@"\n' > /usr/local/bin/kubeaid-agent && chmod 0755 /usr/local/bin/kubeaid-agent
 RUN apt-get update && apt-get install -y --no-install-recommends jq ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=llbuild2 /src/build/bin/llama-server /usr/local/bin/llama-server
 COPY --from=fetch /out/kubectl /usr/local/bin/kubectl
