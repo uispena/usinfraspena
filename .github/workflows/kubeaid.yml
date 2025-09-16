@@ -1,0 +1,29 @@
+name: build-kubeaid
+on:
+  push:
+    paths:
+      - "kubeaid_offline/**"
+permissions:
+  contents: read
+  packages: write   # allow push to GHCR
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/kubeaid
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & Push
+        uses: docker/build-push-action@v6
+        with:
+          context: kubeaid_offline
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:offline-latest
+            ${{ env.IMAGE_NAME }}:offline-${{ github.sha }}
