@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Namespace
+metadata: { name: kubeaid }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: kubeaid, namespace: kubeaid }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: kubeaid-readonly }
+rules:
+- apiGroups: [""]
+  resources: ["pods","pods/log","services","nodes","namespaces","events","endpoints","configmaps"]
+  verbs: ["get","list","watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments","daemonsets","replicasets","statefulsets"]
+  verbs: ["get","list","watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: kubeaid-readonly }
+subjects:
+- kind: ServiceAccount
+  name: kubeaid
+  namespace: kubeaid
+roleRef:
+  kind: ClusterRole
+  name: kubeaid-readonly
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: kubeaid, namespace: kubeaid }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: kubeaid } }
+  template:
+    metadata: { labels: { app: kubeaid } }
+    spec:
+      serviceAccountName: kubeaid
+      containers:
+      - name: kubeaid
+        image: @IMAGE@
+        imagePullPolicy: IfNotPresent
+        tty: true
+        stdin: true
+        resources:
+          requests: { cpu: "500m", memory: "1Gi" }
+          limits:   { cpu: "2",    memory: "6Gi" }
